@@ -1,19 +1,33 @@
 {
-  "name": "CSV to Database Notification Workflow",
+  "name": "CSV Pipeline Workflow",
   "nodes": [
     {
-      "name": "New CSV in Drive",
-      "type": "n8n-nodes-base.googleDriveTrigger",
+      "name": "CSV Ready Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
       "position": [200, 300],
       "parameters": {
-        "event": "fileCreated",
-        "folder": "automation-data-integration"
+        "httpMethod": "POST",
+        "path": "csv-ready",
+        "responseMode": "onReceived",
+        "options": {}
       }
     },
     {
-      "name": "Read CSV",
+      "name": "Read File from Disk",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [420, 300],
+      "parameters": {
+        "operation": "read",
+        "fileName": "={{ $json.body.file_path }}"
+      }
+    },
+    {
+      "name": "Parse CSV",
       "type": "n8n-nodes-base.spreadsheetFile",
-      "position": [460, 300],
+      "typeVersion": 2,
+      "position": [640, 300],
       "parameters": {
         "operation": "fromFile",
         "options": {
@@ -24,30 +38,48 @@
     {
       "name": "Upsert User Metrics",
       "type": "n8n-nodes-base.postgres",
-      "position": [720, 300],
+      "typeVersion": 2,
+      "position": [860, 300],
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO processed_user_metrics (user_id, name, email, city, company, total_posts) VALUES ({{$json.user_id}}, {{$json.name}}, {{$json.email}}, {{$json.city}}, {{$json.company}}, {{$json.total_posts}}) ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, city = EXCLUDED.city, company = EXCLUDED.company, total_posts = EXCLUDED.total_posts, processed_at = CURRENT_TIMESTAMP;"
+        "query": "INSERT INTO processed_user_metrics (user_id, name, email, city, company, total_posts) VALUES ({{ $json.user_id }}, '{{ $json.name }}', '{{ $json.email }}', '{{ $json.city }}', '{{ $json.company }}', {{ $json.total_posts }}) ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, city = EXCLUDED.city, company = EXCLUDED.company, total_posts = EXCLUDED.total_posts, processed_at = CURRENT_TIMESTAMP;"
       }
     },
     {
-      "name": "Send Success Message",
-      "type": "n8n-nodes-base.slack",
-      "position": [980, 300],
+      "name": "Send Webhook Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1080, 300],
       "parameters": {
-        "text": "=Data pipeline executed successfully.\nProcessed users: {{ $items('Read CSV').length }}\nTotal posts: {{ $items('Read CSV').reduce((sum, item) => sum + parseInt(item.json.total_posts || 0), 0) }}"
+        "method": "POST",
+        "url": "http://localhost:8000/webhook/notify",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={ \"event\": \"pipeline_completed\", \"processed_users\": {{ $items('Parse CSV').length }}, \"total_posts\": {{ $items('Parse CSV').reduce((sum, item) => sum + parseInt(item.json.total_posts || 0), 0) }} }"
       }
     }
   ],
   "connections": {
-    "New CSV in Drive": {
-      "main": [[{"node": "Read CSV", "type": "main", "index": 0}]]
+    "CSV Ready Trigger": {
+      "main": [[{"node": "Read File from Disk", "type": "main", "index": 0}]]
     },
-    "Read CSV": {
+    "Read File from Disk": {
+      "main": [[{"node": "Parse CSV", "type": "main", "index": 0}]]
+    },
+    "Parse CSV": {
       "main": [[{"node": "Upsert User Metrics", "type": "main", "index": 0}]]
     },
     "Upsert User Metrics": {
-      "main": [[{"node": "Send Success Message", "type": "main", "index": 0}]]
+      "main": [[{"node": "Send Webhook Notification", "type": "main", "index": 0}]]
     }
   }
 }

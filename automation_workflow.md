@@ -1,30 +1,31 @@
 # Workflow Automation
 
-I would build this workflow in Zapier or n8n. The idea is simple: every time a new CSV is added to a monitored folder, the workflow reads it, sends the rows to the database and notifies the team.
+The workflow runs in n8n. After the Python pipeline generates the CSV, it calls an n8n webhook endpoint to trigger the rest of the flow: parse the file, upsert the rows into the database and send a notification with the processing summary.
 
-## Option 1: Zapier
+## Flow
 
-1. Trigger: New File in Google Drive Folder.
-2. Action: Formatter by Zapier, using the CSV import/parse step.
-3. Action: PostgreSQL, using Insert or Update Row for each processed user.
-4. Action: Slack or Gmail notification.
+1. **CSV Ready Trigger** (Webhook): Receives a `POST /webhook/csv-ready` from the pipeline after the CSV is generated. Serves as the entry point for the automation.
+2. **Read File from Disk**: Reads the CSV from a local path using the file path received in the webhook payload.
+3. **Parse CSV**: The Spreadsheet File node parses the binary file into structured rows.
+4. **Upsert into PostgreSQL**: The Postgres node inserts or updates the user metrics using `ON CONFLICT`.
+5. **Send Webhook Notification**: An HTTP Request node POSTs a JSON summary to the notification endpoint:
 
-Notification message:
-
-```text
-Data pipeline executed successfully.
-Processed users: 10
-Processed posts: 100
+```json
+{
+  "event": "pipeline_completed",
+  "processed_users": 10,
+  "total_posts": 100
+}
 ```
 
-## Option 2: n8n
+The `processed_users` and `total_posts` values are computed dynamically from the items that passed through the Read CSV node.
 
-1. Google Drive Trigger watches the folder.
-2. Spreadsheet File node reads the CSV.
-3. Postgres node upserts the users and metrics.
-4. Slack or Email node sends a short completion summary.
+## Trigger design
+
+The PDF allows either a folder watch or a storage service as the trigger. A webhook trigger was chosen because it fits naturally into the existing architecture — the Python pipeline already generates the CSV and can call the n8n endpoint directly after saving the file. This avoids polling and makes the handoff between the pipeline and the automation explicit.
+
+In production this webhook could also be replaced by a Google Drive or S3 event trigger with no changes to the downstream nodes.
 
 ## Notes
 
-For a production version, I would add an error branch with a notification when the CSV is missing required columns or when the database insert fails. For this challenge, I kept the flow direct and easy to explain.
-
+For a production setup I would add an error branch after the Postgres node so that a failed upsert triggers a separate alert instead of silently stopping the flow. For this challenge the happy path is enough to demonstrate the design.

@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import psycopg2
 from fastapi import FastAPI
@@ -51,7 +52,7 @@ def _save_to_db(payload: UserPayload) -> None:
                 (payload.name, payload.email, payload.city or "", payload.company),
             )
         logging.info("User %s saved to DB", payload.email)
-    except psycopg2.Error as err:
+    except (psycopg2.Error, UnicodeDecodeError) as err:
         logging.warning("DB insert failed for %s: %s", payload.email, err)
 
 
@@ -76,3 +77,12 @@ def receive_user(payload: UserPayload) -> dict:
         "message": "User received and ready to be inserted",
         "data": user_record,
     }
+
+
+@app.post("/webhook/notify", status_code=200)
+def receive_notification(body: dict[str, Any]) -> dict:
+    event = body.get("event", "unknown")
+    users = body.get("processed_users", 0)
+    posts = body.get("total_posts", 0)
+    logging.info("Pipeline notification received — event=%s users=%s posts=%s", event, users, posts)
+    return {"received": True, "event": event, "processed_users": users, "total_posts": posts}

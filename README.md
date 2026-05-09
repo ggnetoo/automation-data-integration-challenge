@@ -32,14 +32,22 @@ automation-data-integration-challenge/
     insert_data.sql
     queries.sql
   screenshots/
-    workflow_example.png
+    empty_db.png              # database before workflow runs
+    n8n_workflow_executed.png # all 5 nodes green after execution
+    dt_data_after_n8n.png    # database populated after workflow
   logs/
     pipeline.log
 ```
 
+## Prerequisites
+
+- Python 3.10+
+- Node.js 18+ (required only for running n8n locally)
+- PostgreSQL (required only for the SQL part and webhook DB insert)
+
 ## Setup
 
-Copy `.env.example` (or rename `.env`) and fill in your values, then install dependencies:
+Copy `.env.example` to `.env` and fill in your values, then install Python dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -100,7 +108,15 @@ The model keeps companies in a separate table to avoid duplicated data and makes
 
 ## Workflow automation
 
-The n8n workflow (`workflow_export_n8n.json`) triggers on a new CSV in Google Drive, reads the file, upserts the rows to the database and sends a Slack message with the number of processed users and total posts. See `automation_workflow.md` for design notes.
+The n8n workflow (`workflow_export_n8n.json`) triggers via webhook after the pipeline generates the CSV, reads the file from disk, upserts the rows to the database and sends a webhook notification with the number of processed users and total posts. See `automation_workflow.md` for design notes.
+
+To run n8n locally:
+
+```bash
+npx n8n
+```
+
+Then open `http://localhost:5678`, go to **Workflows → Import from file** and select `workflow_export_n8n.json`.
 
 ## Design decisions
 
