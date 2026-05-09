@@ -1,0 +1,53 @@
+{
+  "name": "CSV to Database Notification Workflow",
+  "nodes": [
+    {
+      "name": "New CSV in Drive",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "position": [200, 300],
+      "parameters": {
+        "event": "fileCreated",
+        "folder": "automation-data-integration"
+      }
+    },
+    {
+      "name": "Read CSV",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "position": [460, 300],
+      "parameters": {
+        "operation": "fromFile",
+        "options": {
+          "headerRow": true
+        }
+      }
+    },
+    {
+      "name": "Upsert User Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "position": [720, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO processed_user_metrics (user_id, name, email, city, company, total_posts) VALUES ({{$json.user_id}}, {{$json.name}}, {{$json.email}}, {{$json.city}}, {{$json.company}}, {{$json.total_posts}}) ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, city = EXCLUDED.city, company = EXCLUDED.company, total_posts = EXCLUDED.total_posts, processed_at = CURRENT_TIMESTAMP;"
+      }
+    },
+    {
+      "name": "Send Success Message",
+      "type": "n8n-nodes-base.slack",
+      "position": [980, 300],
+      "parameters": {
+        "text": "=Data pipeline executed successfully.\nProcessed users: {{ $items('Read CSV').length }}\nTotal posts: {{ $items('Read CSV').reduce((sum, item) => sum + parseInt(item.json.total_posts || 0), 0) }}"
+      }
+    }
+  ],
+  "connections": {
+    "New CSV in Drive": {
+      "main": [[{"node": "Read CSV", "type": "main", "index": 0}]]
+    },
+    "Read CSV": {
+      "main": [[{"node": "Upsert User Metrics", "type": "main", "index": 0}]]
+    },
+    "Upsert User Metrics": {
+      "main": [[{"node": "Send Success Message", "type": "main", "index": 0}]]
+    }
+  }
+}
