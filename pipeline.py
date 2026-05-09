@@ -7,7 +7,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from config import BASE_DIR, OUTPUT_FILE, POSTS_URL, REQUEST_TIMEOUT, USERS_URL, USE_LOCAL_FALLBACK
+from config import BASE_DIR, DATABASE_URL, N8N_WEBHOOK_URL, OUTPUT_FILE, POSTS_URL, REQUEST_TIMEOUT, USERS_URL, USE_LOCAL_FALLBACK
+from create_dashboard import build_dashboard
 from sample_data import SAMPLE_POSTS, SAMPLE_USERS
 
 
@@ -82,6 +83,21 @@ def save_csv(data: list[dict], filename: str) -> Path:
     return output_path
 
 
+def notify_n8n(csv_path: Path) -> None:
+    if not N8N_WEBHOOK_URL:
+        return
+    try:
+        session = create_session()
+        session.post(
+            N8N_WEBHOOK_URL,
+            json={"file_path": str(csv_path).replace("\\", "/")},
+            timeout=5,
+        )
+        logging.info("n8n notified at %s", N8N_WEBHOOK_URL)
+    except requests.RequestException as err:
+        logging.warning("Could not notify n8n: %s", err)
+
+
 def run_pipeline() -> Path:
     logging.info("Starting pipeline")
     users = fetch_data(USERS_URL, SAMPLE_USERS)
@@ -94,7 +110,9 @@ def run_pipeline() -> Path:
 
 def main() -> None:
     path = run_pipeline()
-    print(f"Done! File saved to: {path.name}")
+    build_dashboard()
+    notify_n8n(path)
+    print(f"Done! CSV saved to: {path.name}")
 
 
 if __name__ == "__main__":

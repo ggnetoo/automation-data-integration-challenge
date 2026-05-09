@@ -1,5 +1,7 @@
 # Automation & Data Integration Challenge
 
+**Repository:** https://github.com/ggnetoo/automation-data-integration-challenge
+
 End-to-end data pipeline that fetches users and posts from a public API, normalizes and joins the data, saves a CSV, models the result in SQL, generates a dashboard in Excel and exposes a webhook endpoint for receiving new users.
 
 ## What is included
